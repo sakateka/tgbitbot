@@ -32,7 +32,7 @@ const log = winston.createLogger({
 
 
 bot.use((ctx, next) => {
-    log.debug("%s", { user: ctx.from.username, text: ctx.message?.text || ctx.callbackQuery.data })
+    log.debug("payload: %s", { user: ctx.from.username, text: ctx.message?.text || ctx.callbackQuery?.data })
     return next()
 })
 
@@ -107,6 +107,7 @@ bot.on('callback_query', async ctx => {
     try {
         let count = (await db('orders')
             .where({ from_uid: ctx.from.id })
+            .whereNot({ status: 'Выполнен' })
             .count({ count: '*' })
             .first()).count
 
@@ -168,7 +169,8 @@ bot.on('callback_query', async ctx => {
             price: summa,
             product_id: product.id,
             category_id: product.category_id,
-            product_data: 'Будет доступно после оплаты'
+            product_data: 'Будет доступно после оплаты',
+            order_date: (new Date()).toISOString()
         }
         await db('orders').insert(order)
 
@@ -399,27 +401,29 @@ bot.launch().then(() => {
     log.info('Bot Started!')
     // После старта запускаем таймер который будет срабатывать каждый
     // Интервал с которым мы будем проверять коши на оплату
-    const minutes = 60 * 1000
-    const TenMinutes = 1 * minutes
-    const NinetyMinutes = 9 * minutes
 
     const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
     // для проверки ордеров и удаления лишнего
+    log.info("Spawn periodic checking of orders evenry %s seconds", conf.OrdersCheckInterval / 1000)
     setInterval(async () => {
         log.info("Periodic checking of orders")
         let orders = await db('orders')
             .whereNot({ status: 'Выполнен' })
-            .select('address', 'status', 'price', 'product_id', 'order_date')
+            .select('order_id', 'address', 'status', 'price', 'product_id', 'order_date')
 
         // Получаем заказы которые не выполнены и проходимся по каждому из заказов
         for (let order of orders) {
-            let timeInMs = (Math.random() * 5000) + 1000;
+            let timeInMs = conf.GetBalanceThrottleTimeout()
             await delay(timeInMs) // do not ddos balance api, wait for a bit.
 
             let balance = await getBalance(order.address)
             log.debug("Order address for payment: %s - balance: %s", order.address, balance)
 
             // Если есть баланс то изменяем статус, и закидываем продукт
+            if (balance.received == 'Error' || balance.undefined == 'Error') {
+                continue
+            }
+
             if (balance.received >= order.price) {
                 let response = await db('products').where({ id: order.product_id })
                 if (response.length != 0) {
@@ -438,15 +442,17 @@ bot.launch().then(() => {
                     .where({ address: order.address })
                     .update({ status: 'В ожидании подтверждений' })
 
-            } else if (balance.received != 'Error') {
+            } else {
                 // Удаляем лишние ордеры если прошло 90 и больше минут с момента его создания
-                if (Date.parse(order.order_date) + NinetyMinutes <= new Date) {
+                let orderTS = (new Date(order.order_date)).getTime()
+                let nowTS = (new Date()).getTime()
+                if (orderTS + conf.ObsoleteTimeout <= nowTS) {
                     log.warn(`Remove obsolete order: ${JSON.stringify(order)}`)
-                    await db('orders').where({ address: order.address }).del()
+                    await db('orders').where({ order_id: order.order_id }).del()
                 }
             }
         }
-    }, TenMinutes)
+    }, conf.OrdersCheckInterval)
 })
 
 // Enable graceful stop
