@@ -1,4 +1,5 @@
 -- дока по типам https://sqlite.org/datatype3.html
+DROP TABLE IF EXISTS categories;
 CREATE TABLE categories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name VARCHAR(255) NOT NULL,
@@ -6,6 +7,7 @@ CREATE TABLE categories (
     price FLOAT(8,8) NOT NULL
 );
 
+DROP TABLE IF EXISTS products;
 CREATE TABLE products (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     category_id INT NOT NULL,
@@ -13,6 +15,7 @@ CREATE TABLE products (
     FOREIGN KEY(category_id) REFERENCES categories(id)
 );
 
+DROP TABLE IF EXISTS orders;
 CREATE TABLE orders (
     from_uid INTEGER NOT NULL,
     order_id CHAR(32) NOT NULL,
