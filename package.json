@@ -16,7 +16,7 @@
   "scripts": {
     "serve": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "recreate-db": "rm -vi db/my.db3; sqlite3 -bail -interactive -quote db/my.db3 < db/schema.sql",
+    "recreate-db": "rm -vif db/my.db3; sqlite3 -bail -interactive -quote db/my.db3 < db/schema.sql",
     "insert-products": "sqlite3 -interactive -bail -quote db/my.db3 < db/products.sql"
   }
 }
